@@ -1,61 +1,120 @@
-const client = require('../db/db');
+const { getDB } = require('../db/db');
+const { ObjectId } = require('mongodb');
 
-async function getTodos() {
-  try {
-    const { rows } = await client.query('SELECT * FROM todos ORDER BY id ASC');
-    console.log('Fetched todos:', rows);
-    return rows;
-  } catch (err) {
-    console.error('Error fetching todos:', err);
-    throw err;
-  }
+async function getTodos(userEmail) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
+  
+  const user = await usersCollection.findOne({ email: userEmail });
+  return user ? user.todos || [] : [];
 }
 
-async function addTodo(title) {
-  const { rows } = await client.query(
-    'INSERT INTO todos (title, completed) VALUES ($1, $2) RETURNING *',
-    [title, false]
+async function addTodo(userEmail, title) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
+  
+  const newTodo = { _id: new ObjectId(), title, completed: false };
+
+  const user = await usersCollection.findOne({ email: userEmail });
+
+  if (!user) {
+    await usersCollection.insertOne({
+      email: userEmail,
+      name: '', // You can add name on signup
+      todos: [newTodo]
+    });
+  } else {
+    await usersCollection.updateOne(
+      { email: userEmail },
+      { $push: { todos: newTodo } }
+    );
+  }
+
+  return newTodo;
+}
+
+async function updateTodo(userEmail, todoId, completed, title) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
+
+  const user = await usersCollection.findOne({ email: userEmail });
+  if (!user) return null;
+
+  const todos = user.todos.map(todo => {
+    if (todo._id.toString() === todoId) {
+      return {
+        ...todo,
+        ...(completed !== undefined ? { completed } : {}),
+        ...(title !== undefined ? { title } : {})
+      };
+    }
+    return todo;
+  });
+
+  await usersCollection.updateOne(
+    { email: userEmail },
+    { $set: { todos } }
   );
-  return rows[0];
+
+  return todos.find(todo => todo._id.toString() === todoId);
 }
 
-async function updateTodo(id, completed, title) {
-  try {
-    const fields = [];
-    const values = [];
-    let i = 1;
+async function markAllCompleted(userEmail) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
 
-    if (completed !== undefined) {
-      fields.push(`completed = $${i++}`);
-      values.push(completed);
-    }
+  const user = await usersCollection.findOne({ email: userEmail });
+  if (!user) return 0;
 
-    if (title !== undefined) {
-      fields.push(`title = $${i++}`);
-      values.push(title);
-    }
+  const updatedTodos = user.todos.map(todo => ({
+    ...todo,
+    completed: true
+  }));
 
-    if (fields.length === 0) return null;
+  await usersCollection.updateOne(
+    { email: userEmail },
+    { $set: { todos: updatedTodos } }
+  );
 
-    values.push(id);
-
-    const query = `UPDATE todos SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`;
-    const { rows } = await client.query(query, values);
-    return rows[0];
-  } catch (err) {
-    console.error('Error updating todo:', err);
-    throw err;
-  }
+  return updatedTodos.length;
 }
 
+async function deleteTodo(userEmail, todoId) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
 
-async function deleteTodo(id) {
-  await client.query('DELETE FROM todos WHERE id = $1', [id]);
+  const user = await usersCollection.findOne({ email: userEmail });
+  if (!user) return null;
+
+  const existingTodo = user.todos.find(todo => todo._id.toString() === todoId);
+  if (!existingTodo) return null;
+
+  const updatedTodos = user.todos.filter(todo => todo._id.toString() !== todoId);
+
+  await usersCollection.updateOne(
+    { email: userEmail },
+    { $set: { todos: updatedTodos } }
+  );
+
+  return true;
 }
+async function deleteUserAccount(email) {
+  const db = getDB();
+  const usersCollection = db.collection('users');
+  
+  const user = await usersCollection.findOne({ email });
+  if (!user) return null;
+
+  await usersCollection.deleteOne({ email });
+  return true;
+}
+
 
 module.exports = {
   getTodos,
   addTodo,
   updateTodo,
-  deleteTodo
+  deleteTodo,
+  markAllCompleted,
+  deleteUserAccount
 };

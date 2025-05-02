@@ -1,6 +1,7 @@
 const path = require('path');
 const fastify = require('fastify')({ logger: true });
 const todoRoutes = require('./routes/todo.routes');
+const { connectDB } = require('./db/db');
 
 // ✅ Enable CORS
 fastify.register(require('@fastify/cors'), { 
@@ -30,6 +31,7 @@ fastify.register(todoRoutes, { prefix: '/todos' }); // Backend endpoints at /tod
 // ✅ Start server
 const start = async () => {
   try {
+    await connectDB();
     await fastify.listen({ port: 3000 });
     fastify.log.info(`🚀 Server listening on http://localhost:3000`);
   } catch (err) {

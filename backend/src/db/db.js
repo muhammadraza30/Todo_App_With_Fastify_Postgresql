@@ -1,19 +1,25 @@
-// backend/src/db/db.js
-const { Client } = require('pg');
+const { MongoClient } = require('mongodb');
 const dotenv = require('dotenv');
-dotenv.config(); 
+dotenv.config();
 
+const uri = process.env.MONGO_URI || 'mongodb://localhost:27017';
+const client = new MongoClient(uri);
 
-const client = new Client({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+let db;
 
-client.connect()
-  .then(() => console.log('✅ Connected to PostgreSQL'))
-  .catch(err => console.error('❌ PostgreSQL connection error:', err.stack));
+async function connectDB() {
+  try {
+    await client.connect();
+    db = client.db('todo_app'); // You can rename this as needed
+    console.log('✅ Connected to MongoDB');
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err);
+  }
+}
 
-module.exports = client;
+function getDB() {
+  if (!db) throw new Error('❌ Database not connected yet');
+  return db;
+}
+
+module.exports = { connectDB, getDB };
